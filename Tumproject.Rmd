@@ -22,7 +22,6 @@ library(rsample)
 # Load datasets
 
 ```{r}
-
 SSRC_dataset_case_study_1 <- read_csv("SSRC_dataset_case_study_1.csv")
 
 SSRC_dataset_case_study_2 <- read_csv("SSRC_dataset_case_study_2.csv")
