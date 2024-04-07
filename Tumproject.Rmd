@@ -1,0 +1,168 @@
+---
+title: "Dataset"
+author: "Luis"
+date: "2023-11-22"
+output: html_document
+editor_options: 
+  chunk_output_type: console
+---
+
+# Load libraries
+
+```{r echo=false}
+library(ggplot2)
+library(dplyr)
+library(tidyverse)
+library(readr)
+library(readxl)
+library(zeallot)
+library(rsample)
+```
+
+# Load datasets
+
+```{r}
+
+SSRC_dataset_case_study_1 <- read_csv("SSRC_dataset_case_study_1.csv")
+
+SSRC_dataset_case_study_2 <- read_csv("SSRC_dataset_case_study_2.csv")
+
+```
+
+# Rename datasets, values and create factors
+
+```{r datasets}
+dataset <- SSRC_dataset_case_study_1%>%
+  rename(age = v1, gender= v2, smoking=v3, bmi= v4, sys=v5, dia=v6, cvd=v7)
+dataset <- dataset %>%
+  mutate(gender=factor(gender), smoking=factor(smoking), cvd=factor(cvd))
+dataset$gender <- ifelse(dataset$gender == 0, "male", "female")
+dataset2 <- SSRC_dataset_case_study_2%>%
+  rename(age = v1, gender= v2, smoking=v3, bmi= v4, sys=v5, dia=v6)%>%
+  mutate(gender=factor(gender), smoking=factor(smoking))
+dataset2$gender <- ifelse(dataset2$gender == 0, "male", "female")
+
+rm(SSRC_dataset_case_study_1, SSRC_dataset_case_study_2)
+```
+
+# Create hypertense variable
+
+```{r}
+dataset <- dataset|>
+  mutate(hypertense= sys>= 140)
+head(dataset)
+```
+
+# Analyse distribution of variables in dataset one with histograms
+
+```{r}
+ggplot(dataset, aes(x=age)) +geom_histogram(bins=55) +theme_classic()
+ggplot(dataset, aes(x=gender)) + geom_bar()
+ggplot(dataset, aes(x=smoking)) + geom_bar()
+ggplot(dataset, aes(x=cvd)) + geom_bar()
+ggplot(dataset, aes(x=hypertense)) + geom_bar()
+
+ggplot(dataset, aes(x=bmi))+geom_histogram()
+ggplot(dataset, aes(x=sys)) +geom_histogram()
+
+```
+
+# Analyze the relationship between the outcome variable (CVD Event) and each of the numerical variables graphically.
+
+build graph function
+
+```{r}
+plot_cvd <- function(a){
+  ggplot(dataset, aes(cvd,a)) + geom_point(position=position_jitter()) + theme_classic() + labs(y.axis=a)
+}
+```
+
+apply
+
+```{r}
+ggplot(dataset, aes(cvd, bmi)) + geom_boxplot()
+ggplot(dataset, aes(cvd, age)) + geom_violin()+theme_classic()
+ggplot(dataset, aes(cvd, gender)) + geom_count()+theme_classic()
+ggplot(dataset, aes(cvd, bmi)) + geom_boxplot()+theme_classic()
+ggplot(dataset, aes(cvd, smoking)) + geom_count() + theme_classic()
+ggplot(dataset, aes(cvd, sys)) + geom_violin() + theme_classic()
+ggplot(dataset, aes(cvd, dia)) + geom_violin() + theme_classic()
+ggplot(dataset, aes(cvd, hypertense)) + geom_count() + theme_classic()
+
+```
+
+3.  Regression analysis
+
+    Use a logit model to analyze the relationship between individual characteristics and the 10 year probability of a CVD event.
+
+```{r}
+logit_ml <- glm(cvd ~ age+gender+smoking+bmi+sys+dia, family= "binomial", data = dataset)
+summary(logit_ml)
+plot(logit_ml)
+```
+
+add probability for each patient make function to calculate probability
+
+```{r}
+logit.predictions <- 
+predict(logit_ml, dataset2)
+prob.predictions <- 1/(1+exp(-logit.predictions))
+dataset2$probability <- prob.predictions
+```
+
+Add a column that shows if a patient is high risk
+
+```{r}
+dataset2 <- dataset2 |>
+  mutate(high_risk = if_else(probability > 0.1, 1,0))
+```
+
+5.  Number of CVD Events in upcoming years
+
+```{r}
+mean(dataset2$probability) * 5000
+```
+
+Bootstrap to look at the probability
+
+```{r}
+cvd_risk_boot <- numeric(1000)
+
+for (i in 1:1000){
+  dataset_boot <- slice_sample(dataset2, n=10000, replace = TRUE)
+  cvd_risk_boot[i] <- mean(dataset_boot$probability) * 5000
+}
+mean(cvd_risk_boot)
+sd(cvd_risk_boot)
+quantile(cvd_risk_boot)
+hist(cvd_risk_boot)
+```
+
+# 6 create risk classification tool
+
+```{r}
+risk_class <- function(age, gender, smoking, bmi, sys, dia){
+  data <- tibble(age, gender, smoking, bmi, sys, dia)
+  data <- data %>%
+  mutate(gender=factor(gender), smoking=factor(smoking))
+  logit_ml <- glm(cvd ~ age+gender+smoking+bmi+sys+dia, family= "binomial", data = dataset)
+  logit.predictions <- predict(logit_ml, data)
+  prob.predictions <- 1/(1+exp(-logit.predictions))
+  high_risk = if_else(prob.predictions > 0.1, 1,0)
+  if_else(high_risk==1,"Offer Life Style Change Program", "No Action Needed")
+}
+```
+
+try out low risk
+
+```{r}
+
+risk_class(age=20, gender = "female", smoking = 0, bmi = 20, sys = 120, dia= 80)
+
+```
+
+Test high risk
+
+```{r}
+risk_class(age=70, gender = "male", smoking = 1, bmi=35, sys= 160, dia= 100)
+```
